@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python appium/scripts/check_environment.py)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"from app.config.settings import settings; print\\(''Settings OK:'', settings.host, settings.port, settings.llm_provider\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"import appium; print\\(appium.__version__\\)\")",
+      "Bash(python -c \"from appium.options.android.uiautomator2.base import UiAutomator2Options; print\\(''OK''\\)\")",
+      "Bash(python -c \"import appium.options; print\\(dir\\(appium.options\\)\\)\")",
+      "Bash(python -c \"from appium.options import AppiumOptions; print\\(''AppiumOptions OK''\\)\")",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(python -m json.tool)"
+    ]
+  }
+}

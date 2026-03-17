@@ -1,0 +1,17 @@
+{
+  "platformName": "Android",
+  "automationName": "UiAutomator2",
+  "noReset": true,
+  "newCommandTimeout": 300,
+  "autoGrantPermissions": true,
+  "settings": {
+    "waitForIdleTimeout": 100,
+    "waitForSelectorTimeout": 10000
+  },
+  "comments": {
+    "appPackage": "Set this to the package name of the app you want to test",
+    "appActivity": "Set this to the launcher activity (optional — Appium can detect it)",
+    "udid": "Set to specific device serial if multiple devices connected",
+    "example_udid": "emulator-5554"
+  }
+}

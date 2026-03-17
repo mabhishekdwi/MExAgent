@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/colorOverlayBg"
+    android:padding="8dp"
+    android:elevation="16dp">
+
+    <TextView
+        android:id="@+id/tvOverlayStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Idle"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:gravity="center"
+        android:paddingBottom="4dp" />
+
+    <!-- Start -->
+    <ImageButton
+        android:id="@+id/btnOverlayStart"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:src="@android:drawable/ic_media_play"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="#4CAF50"
+        android:contentDescription="@string/overlay_start" />
+
+    <!-- Stop -->
+    <ImageButton
+        android:id="@+id/btnOverlayStop"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:src="@android:drawable/ic_media_pause"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="#F44336"
+        android:enabled="false"
+        android:alpha="0.5"
+        android:contentDescription="@string/overlay_stop" />
+
+    <!-- Logs -->
+    <ImageButton
+        android:id="@+id/btnOverlayLogs"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:src="@android:drawable/ic_menu_agenda"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="#2196F3"
+        android:contentDescription="Logs" />
+
+    <!-- Settings -->
+    <ImageButton
+        android:id="@+id/btnOverlaySettings"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:src="@android:drawable/ic_menu_manage"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="#9E9E9E"
+        android:contentDescription="Settings" />
+</LinearLayout>

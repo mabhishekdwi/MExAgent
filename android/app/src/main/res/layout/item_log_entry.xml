@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="3dp"
+    android:paddingHorizontal="4dp"
+    android:gravity="center_vertical">
+
+    <!-- Color bar indicator -->
+    <View
+        android:id="@+id/viewIndicator"
+        android:layout_width="3dp"
+        android:layout_height="match_parent"
+        android:minHeight="36dp"
+        android:layout_marginEnd="8dp"
+        android:background="@color/colorInfo" />
+
+    <!-- Level badge -->
+    <TextView
+        android:id="@+id/tvLevel"
+        android:layout_width="64dp"
+        android:layout_height="wrap_content"
+        android:text="[INFO]"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        android:textColor="@color/colorInfo" />
+
+    <!-- Message -->
+    <TextView
+        android:id="@+id/tvMessage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textSize="11sp"
+        android:textColor="#EEEEEE"
+        android:fontFamily="monospace"
+        android:lineSpacingExtra="2dp" />
+
+    <!-- Timestamp -->
+    <TextView
+        android:id="@+id/tvTimestamp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="00:00:00"
+        android:textSize="9sp"
+        android:textColor="#555555"
+        android:layout_marginStart="6dp"
+        android:fontFamily="monospace" />
+</LinearLayout>
