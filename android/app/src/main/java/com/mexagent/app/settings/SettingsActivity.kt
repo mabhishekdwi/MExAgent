@@ -47,6 +47,15 @@ class SettingsActivity : AppCompatActivity() {
                 binding.switchAiMode.isChecked = enabled
             }
         }
+        lifecycleScope.launch {
+            viewModel.speedMs.collectLatest { ms ->
+                when {
+                    ms <= 1000 -> binding.rgSpeed.check(binding.rbFast.id)
+                    ms >= 3500 -> binding.rgSpeed.check(binding.rbSlow.id)
+                    else       -> binding.rgSpeed.check(binding.rbMedium.id)
+                }
+            }
+        }
     }
 
     private fun setupSaveButton() {
@@ -60,6 +69,12 @@ class SettingsActivity : AppCompatActivity() {
             viewModel.setBackendUrl(url)
             viewModel.setDepth(binding.npDepth.value)
             viewModel.setAiMode(binding.switchAiMode.isChecked)
+            val speedMs = when (binding.rgSpeed.checkedRadioButtonId) {
+                binding.rbFast.id -> 800
+                binding.rbSlow.id -> 4000
+                else              -> 2000
+            }
+            viewModel.setSpeedMs(speedMs)
             Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
             finish()
         }

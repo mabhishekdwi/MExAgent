@@ -18,8 +18,9 @@ class AgentController(context: Context) {
         _state.value = AgentState.Starting
         return try {
             val url     = dataStore.backendUrl.first()
+            val speedMs = dataStore.speedMs.first()
             val service = ApiClient.getService(url)
-            val resp    = service.startAgent(StartRequest(depth = depth, aiMode = aiMode))
+            val resp    = service.startAgent(StartRequest(depth = depth, aiMode = aiMode, actionDelayMs = speedMs))
             if (resp.isSuccessful && resp.body() != null) {
                 val sessionId = resp.body()!!.sessionId
                 _state.value = AgentState.Running(sessionId)

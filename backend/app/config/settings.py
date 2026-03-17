@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     # Appium
     appium_url: str = Field(default="http://localhost:4723", env="APPIUM_URL")
     appium_timeout: int = Field(default=30, env="APPIUM_TIMEOUT")
+    device_udid: Optional[str] = Field(default=None, env="DEVICE_UDID")
+    device_name: str = Field(default="Android", env="DEVICE_NAME")
+    platform_version: Optional[str] = Field(default=None, env="PLATFORM_VERSION")
 
     # LLM
     llm_provider: str = Field(default="groq", env="LLM_PROVIDER")   # groq | ollama

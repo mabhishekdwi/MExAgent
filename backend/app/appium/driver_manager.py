@@ -24,10 +24,18 @@ class DriverManager:
 
     def _create_driver(self, package_name: Optional[str]) -> webdriver.Remote:
         options = UiAutomator2Options()
-        options.platform_name      = "Android"
-        options.automation_name    = "UiAutomator2"
-        options.no_reset           = True
+        options.platform_name       = "Android"
+        options.automation_name     = "UiAutomator2"
+        options.no_reset            = True
         options.new_command_timeout = 300
+
+        # Device targeting
+        if settings.device_udid:
+            options.udid = settings.device_udid
+        if settings.device_name:
+            options.device_name = settings.device_name
+        if settings.platform_version:
+            options.platform_version = settings.platform_version
 
         if package_name:
             options.app_package = package_name

@@ -23,6 +23,7 @@ async def start_agent(request: StartRequest, background_tasks: BackgroundTasks):
         depth=request.depth,
         ai_mode=request.ai_mode,
         package_name=request.package_name,
+        action_delay_ms=request.action_delay_ms,
     )
     return StartResponse(
         status="started",

@@ -17,9 +17,10 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 class SettingsDataStore(private val context: Context) {
 
     companion object {
-        val KEY_BACKEND_URL = stringPreferencesKey(Constants.KEY_BACKEND_URL)
-        val KEY_DEPTH       = intPreferencesKey(Constants.KEY_DEPTH)
-        val KEY_AI_MODE     = booleanPreferencesKey(Constants.KEY_AI_MODE)
+        val KEY_BACKEND_URL  = stringPreferencesKey(Constants.KEY_BACKEND_URL)
+        val KEY_DEPTH        = intPreferencesKey(Constants.KEY_DEPTH)
+        val KEY_AI_MODE      = booleanPreferencesKey(Constants.KEY_AI_MODE)
+        val KEY_SPEED_MS     = intPreferencesKey("action_delay_ms")
     }
 
     val backendUrl: Flow<String> = context.dataStore.data
@@ -34,6 +35,11 @@ class SettingsDataStore(private val context: Context) {
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[KEY_AI_MODE] ?: Constants.DEFAULT_AI_MODE }
 
+    // Speed: 800=Fast, 2000=Medium, 4000=Slow
+    val speedMs: Flow<Int> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[KEY_SPEED_MS] ?: 2000 }
+
     suspend fun saveBackendUrl(url: String) {
         context.dataStore.edit { it[KEY_BACKEND_URL] = url }
     }
@@ -44,5 +50,9 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun saveAiMode(enabled: Boolean) {
         context.dataStore.edit { it[KEY_AI_MODE] = enabled }
+    }
+
+    suspend fun saveSpeedMs(ms: Int) {
+        context.dataStore.edit { it[KEY_SPEED_MS] = ms }
     }
 }

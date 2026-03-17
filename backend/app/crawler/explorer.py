@@ -18,6 +18,7 @@ from app.parser.xml_parser import parse_xml_to_screen_context, screen_context_to
 from app.llm.llm_client import generate_test_plan
 from app.schemas.action import TestAction
 from app.utils import logger
+from app.utils import highlight_state
 
 
 # ── Shared mutable state (one exploration at a time) ─────────────────────────
@@ -105,6 +106,10 @@ async def _explore_screen(
 
     for elem in elements:
         if elem.label:
+            highlight_state.set_highlight(
+                elem.bounds, elem.label or "", elem.type, "PASS", screen_name
+            )
+            await asyncio.sleep(0.8)
             await logger.log("PASS",
                              f"{elem.type.capitalize()} visible: \"{elem.label}\"",
                              screen=screen_name, session_id=session_id)
@@ -136,15 +141,33 @@ async def _explore_screen(
                          f"{action.action.upper()} \"{action.target}\"{val_tag}",
                          screen=screen_name, session_id=session_id)
 
+        # Find element bounds for visual highlight
+        target_elem = next(
+            (e for e in elements if e.label == action.target or str(e.index) == str(action.target)),
+            None
+        )
+        highlight_state.set_highlight(
+            target_elem.bounds if target_elem else None,
+            action.target or "",
+            target_elem.type if target_elem else "button",
+            "ACT",
+            screen_name,
+        )
+
         pre_activity = await _current_activity(driver)
         success, msg = await execute_action(driver, action, screen_ctx)
         _state.actions_executed += 1
 
         if success:
+            if target_elem:
+                highlight_state.set_highlight(
+                    target_elem.bounds, action.target or "", target_elem.type, "PASS", screen_name
+                )
             await logger.log("PASS", msg, screen=screen_name, session_id=session_id)
 
-            # Check for navigation
+            # Check for navigation — wait for page to load first
             if action.action.lower() in ("tap", "long_press"):
+                await asyncio.sleep(1.5)  # wait for new screen/elements to settle
                 new_activity = await _current_activity(driver)
                 if new_activity and new_activity != pre_activity:
                     await logger.log("PASS",
@@ -160,6 +183,10 @@ async def _explore_screen(
                                      screen=screen_name, session_id=session_id)
                     await _press_back(driver)
         else:
+            if target_elem:
+                highlight_state.set_highlight(
+                    target_elem.bounds, action.target or "", target_elem.type, "FAIL", screen_name
+                )
             await logger.log("FAIL", msg, screen=screen_name, session_id=session_id)
 
 
@@ -170,7 +197,12 @@ async def start_exploration(
     depth: int = 2,
     ai_mode: bool = True,
     package_name: Optional[str] = None,
+    action_delay_ms: Optional[int] = None,
 ) -> None:
+    from app.config.settings import settings
+    if action_delay_ms is not None:
+        settings.action_delay_ms = action_delay_ms
+
     _state.session_id       = session_id
     _state.running          = True
     _state.current_screen   = "Unknown"
@@ -191,6 +223,7 @@ async def start_exploration(
         raise
     finally:
         _state.running = False
+        highlight_state.clear_highlight()
         await logger.log(
             "INFO",
             f"=== Exploration complete | {_state.actions_executed} actions ===",

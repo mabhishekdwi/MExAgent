@@ -33,3 +33,15 @@ data class LogMessage(
     @SerializedName("timestamp") val timestamp: String,
     @SerializedName("screen") val screen: String?
 )
+
+data class HighlightResponse(
+    @SerializedName("active") val active: Boolean,
+    @SerializedName("x") val x: Int,
+    @SerializedName("y") val y: Int,
+    @SerializedName("width") val width: Int,
+    @SerializedName("height") val height: Int,
+    @SerializedName("label") val label: String,
+    @SerializedName("type") val type: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("screen") val screen: String
+)

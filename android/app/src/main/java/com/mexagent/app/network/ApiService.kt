@@ -21,4 +21,7 @@ interface ApiService {
         @Query("since_id") sinceId: Long? = null,
         @Query("limit") limit: Int = 50
     ): Response<LogsResponse>
+
+    @GET("/highlight")
+    suspend fun getHighlight(): Response<HighlightResponse>
 }

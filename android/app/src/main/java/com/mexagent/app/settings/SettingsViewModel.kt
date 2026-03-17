@@ -20,6 +20,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val aiMode: StateFlow<Boolean> = dataStore.aiMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, Constants.DEFAULT_AI_MODE)
 
+    val speedMs: StateFlow<Int> = dataStore.speedMs
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 2000)
+
     fun setBackendUrl(url: String) = viewModelScope.launch {
         dataStore.saveBackendUrl(url.trim())
     }
@@ -30,5 +33,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setAiMode(enabled: Boolean) = viewModelScope.launch {
         dataStore.saveAiMode(enabled)
+    }
+
+    fun setSpeedMs(ms: Int) = viewModelScope.launch {
+        dataStore.saveSpeedMs(ms)
     }
 }

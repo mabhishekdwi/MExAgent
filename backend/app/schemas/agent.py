@@ -15,6 +15,7 @@ class StartRequest(BaseModel):
     depth: int = Field(default=2, ge=1, le=10)
     ai_mode: bool = Field(default=True)
     package_name: Optional[str] = None
+    action_delay_ms: Optional[int] = None   # override ACTION_DELAY_MS from .env
 
 
 class StartResponse(BaseModel):
