@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
  * MExAgent PC Agent
- * Single command: node start.js
- * Starts Appium + ngrok, registers with cloud backend automatically.
+ * Single command: npm start
+ * Starts Appium + localtunnel (no account needed), registers with cloud backend.
  */
 
 const { execSync, spawn } = require("child_process");
-const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
@@ -14,14 +13,14 @@ const path = require("path");
 // ── Load config ───────────────────────────────────────────────────────────────
 const configPath = path.join(__dirname, "config.json");
 if (!fs.existsSync(configPath)) {
-  console.error("❌  config.json not found. Copy config.json and set your backendUrl.");
+  console.error("❌  config.json not found.");
   process.exit(1);
 }
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const { backendUrl, configureSecret, appiumPort = 4723 } = config;
 
 if (!backendUrl || backendUrl.includes("your-app")) {
-  console.error("❌  Edit config.json and set your Render backend URL first.");
+  console.error("❌  Edit config.json and set your backend URL first.");
   process.exit(1);
 }
 
@@ -48,26 +47,14 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function httpGet(url) {
-  return new Promise((resolve, reject) => {
-    const mod = url.startsWith("https") ? https : http;
-    mod.get(url, (res) => {
-      let data = "";
-      res.on("data", (c) => (data += c));
-      res.on("end", () => resolve(data));
-    }).on("error", reject);
-  });
-}
-
 function httpPost(url, body) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const parsed = new URL(url);
-    const mod = parsed.protocol === "https:" ? https : http;
-    const req = mod.request(
+    const req = https.request(
       {
         hostname: parsed.hostname,
-        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        port: parsed.port || 443,
         path: parsed.pathname,
         method: "POST",
         headers: {
@@ -117,34 +104,28 @@ function httpPost(url, body) {
   await sleep(3000);
   console.log(` ✓ Appium  : running on port ${appiumPort}`);
 
-  // 3. Start ngrok
-  console.log(` ⟳ Starting ngrok tunnel...`);
-  const ngrok = spawnBackground("ngrok", ["http", String(appiumPort)], "ngrok");
-  await sleep(4000);
-
-  // 4. Get ngrok URL from its local API
-  let ngrokUrl = "";
-  for (let i = 0; i < 5; i++) {
-    try {
-      const resp = await httpGet("http://localhost:4040/api/tunnels");
-      const data = JSON.parse(resp);
-      ngrokUrl = data.tunnels?.[0]?.public_url || "";
-      if (ngrokUrl) break;
-    } catch {}
-    await sleep(1000);
-  }
-  if (!ngrokUrl) {
-    console.error(" ✗ Could not get ngrok URL. Is ngrok installed and authenticated?");
-    appium.kill(); ngrok.kill();
+  // 3. Start localtunnel (no account needed)
+  console.log(` ⟳ Starting tunnel...`);
+  let lt;
+  let tunnelUrl = "";
+  try {
+    const localtunnel = require("localtunnel");
+    lt = await localtunnel({ port: appiumPort });
+    tunnelUrl = lt.url;
+    lt.on("error", (err) => console.error("[tunnel] error:", err.message));
+    lt.on("close", () => console.log("[tunnel] closed"));
+  } catch (e) {
+    console.error(" ✗ Could not start tunnel:", e.message);
+    appium.kill();
     process.exit(1);
   }
-  console.log(` ✓ ngrok   : ${ngrokUrl}`);
+  console.log(` ✓ Tunnel  : ${tunnelUrl}`);
 
-  // 5. Register with cloud backend
+  // 4. Register with cloud backend
   console.log(` ⟳ Registering with backend: ${backendUrl}`);
   try {
     const result = await httpPost(`${backendUrl}/configure`, {
-      appium_url: ngrokUrl,
+      appium_url: tunnelUrl,
       device_udid: deviceUdid,
       device_name: deviceName,
       platform_version: platformVersion,
@@ -154,22 +135,22 @@ function httpPost(url, body) {
     if (parsed.status === "ok") {
       console.log(` ✓ Backend : registered successfully`);
     } else {
-      console.log(` ✓ Backend : ${result}`);
+      console.log(` ? Backend : ${result}`);
     }
   } catch (e) {
     console.error(` ✗ Could not reach backend: ${e.message}`);
-    console.error(`   Make sure ${backendUrl} is deployed and running.`);
   }
 
-  // 6. Done
+  // 5. Done
+  const pad = (s, n) => String(s).padEnd(n);
   console.log(`
  ╔══════════════════════════════════════════════╗
  ║  All systems running!                        ║
  ║                                              ║
- ║  Backend : ${backendUrl.padEnd(32)} ║
- ║  Appium  : localhost:${String(appiumPort).padEnd(25)} ║
- ║  Tunnel  : ${ngrokUrl.padEnd(32)} ║
- ║  Device  : ${deviceName.padEnd(32)} ║
+ ║  Backend : ${pad(backendUrl, 32)} ║
+ ║  Appium  : localhost:${pad(appiumPort, 25)} ║
+ ║  Tunnel  : ${pad(tunnelUrl, 32)} ║
+ ║  Device  : ${pad(deviceName, 32)} ║
  ╚══════════════════════════════════════════════╝
 
   Open MExAgent on your phone and press ▶ Start
@@ -180,7 +161,7 @@ function httpPost(url, body) {
   process.on("SIGINT", () => {
     console.log("\n Stopping...");
     appium.kill();
-    ngrok.kill();
+    if (lt) lt.close();
     process.exit(0);
   });
 })();

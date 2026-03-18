@@ -21,20 +21,19 @@ Render (Cloud Backend)  ──── ngrok tunnel ────►  Your PC (Appi
 
 ---
 
-## Why ngrok
+## Why a tunnel
 
 Your PC has a private IP (`192.168.1.x`) that the internet cannot reach.
 Render (cloud) needs to call Appium on your PC — but your router blocks it.
 
-ngrok creates a public tunnel:
+The start script uses **localtunnel** (zero-config, no account needed) to create a public URL:
 
 ```text
-Render  →  ngrok.com  →  your router  →  your PC :4723 (Appium)
-          (public URL)    (private IP)
+Render  →  localtunnel.me  →  your router  →  your PC :4723 (Appium)
+             (public URL)       (private IP)
 ```
 
-Without ngrok, Render simply cannot reach your PC.
-The start script handles ngrok automatically — you don't touch it manually.
+localtunnel is installed automatically via `npm install` — you don't touch it manually.
 
 ---
 
@@ -70,18 +69,7 @@ appium driver install uiautomator2
 
 ---
 
-### Step 3 — Install ngrok on Your PC
-
-1. Download from **ngrok.com/download**
-2. Sign up free and run:
-
-```bash
-ngrok config add-authtoken YOUR_TOKEN
-```
-
----
-
-### Step 4 — Install the Android App
+### Step 3 — Install the Android App
 
 ```bash
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
@@ -163,4 +151,4 @@ All three should be green before pressing Start.
 | Appium: ✗ in connection check | Run `start.bat` / `start.sh` on your PC |
 | Backend unreachable | Render free tier sleeps after 15 min — wait ~30s for it to wake |
 | Device not found | Plug phone via USB, accept USB debugging prompt, re-run start script |
-| ngrok URL changes | Free ngrok gives a new URL each restart — the start script re-registers it automatically |
+| Tunnel URL changes | localtunnel gives a new URL each restart — the start script re-registers it automatically |
