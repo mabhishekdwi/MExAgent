@@ -18,7 +18,10 @@ async def connection_check():
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{settings.appium_url}/status")
+            r = await client.get(
+                f"{settings.appium_url}/status",
+                headers={"Bypass-Tunnel-Reminder": "1"},
+            )
             if r.status_code == 200:
                 data = r.json()
                 appium_ok = data.get("value", {}).get("ready", False)

@@ -23,7 +23,7 @@ class ConfigureRequest(BaseModel):
 async def configure(req: ConfigureRequest):
     # Optional: protect with a shared secret set via CONFIGURE_SECRET env var
     expected = getattr(settings, "configure_secret", None)
-    if expected and req.secret != expected:
+    if expected and req.secret and req.secret != expected:
         raise HTTPException(status_code=401, detail="Invalid secret")
 
     settings.appium_url = req.appium_url

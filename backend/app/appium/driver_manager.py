@@ -43,7 +43,11 @@ class DriverManager:
         driver = webdriver.Remote(
             command_executor=settings.appium_url,
             options=options,
+            direct_connection=False,
         )
+        driver.command_executor._client_config.extra_headers = {
+            "Bypass-Tunnel-Reminder": "1"
+        }
         driver.implicitly_wait(settings.appium_timeout)
         return driver
 
