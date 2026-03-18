@@ -2,10 +2,24 @@
   "name": "mexagent-pc-agent",
   "version": "1.0.0",
   "description": "Starts Appium + localtunnel and registers with MExAgent cloud backend",
+  "main": "start.js",
+  "bin": "start.js",
   "scripts": {
-    "start": "node start.js"
+    "start": "node start.js",
+    "build": "node node_modules/pkg/lib-es5/bin.js . --target node18-win-x64 --output dist/mexagent-pc.exe --compress GZip"
   },
   "dependencies": {
     "localtunnel": "^2.0.2"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": [
+      "config.json"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
   }
 }

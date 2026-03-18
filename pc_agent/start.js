@@ -12,15 +12,18 @@
  *   - Registers tunnel URL + device info with cloud backend
  */
 
-const { execSync, spawnSync, spawn } = require("child_process");
+const { execSync, spawn } = require("child_process");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
 
 // ── Load config ───────────────────────────────────────────────────────────────
-const configPath = path.join(__dirname, "config.json");
+// When packaged as .exe, look next to the exe; otherwise use script directory
+const exeDir = process.pkg ? path.dirname(process.execPath) : __dirname;
+const configPath = path.join(exeDir, "config.json");
 if (!fs.existsSync(configPath)) {
-  console.error("❌  config.json not found.");
+  console.error("❌  config.json not found next to mexagent-pc.exe.");
+  console.error(`   Expected: ${configPath}`);
   process.exit(1);
 }
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
