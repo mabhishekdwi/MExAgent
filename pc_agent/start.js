@@ -138,6 +138,40 @@ function ensureUiautomator2() {
   }
 }
 
+// ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
+function startCloudflareTunnel(port) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("cloudflared", ["tunnel", "--url", `http://localhost:${port}`], {
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
+    });
+
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) reject(new Error("Timeout waiting for tunnel URL"));
+    }, 20000);
+
+    const onData = (data) => {
+      const text = data.toString();
+      const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+      if (match && !resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        resolve(match[0]);
+      }
+    };
+
+    proc.stdout.on("data", onData);
+    proc.stderr.on("data", onData);
+    proc.on("exit", (code) => {
+      if (!resolved) reject(new Error(`cloudflared exited with code ${code}`));
+    });
+
+    // Keep reference for cleanup
+    process.on("SIGINT", () => { proc.kill(); });
+  });
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 (async () => {
   console.log("\n MExAgent PC Agent\n ==================\n");
@@ -172,22 +206,17 @@ function ensureUiautomator2() {
   await sleep(3000);
   console.log(` ✓ Appium  : running on port ${appiumPort}`);
 
-  // 4. Start localtunnel
+  // 4. Start Cloudflare tunnel (uses port 443, no firewall issues, no account needed)
   console.log(` ⟳ Starting tunnel...`);
-  let lt;
   let tunnelUrl = "";
   try {
-    const localtunnel = require("localtunnel");
-    lt = await localtunnel({ port: appiumPort });
-    tunnelUrl = lt.url;
-    lt.on("error", (err) => console.error("[tunnel] error:", err.message));
-    lt.on("close", () => console.log("[tunnel] closed"));
+    tunnelUrl = await startCloudflareTunnel(appiumPort);
+    console.log(` ✓ Tunnel  : ${tunnelUrl}`);
   } catch (e) {
     console.error(" ✗ Could not start tunnel:", e.message);
     appium.kill();
     process.exit(1);
   }
-  console.log(` ✓ Tunnel  : ${tunnelUrl}`);
 
   // 5. Register with cloud backend
   console.log(` ⟳ Registering with backend...`);
@@ -228,7 +257,6 @@ function ensureUiautomator2() {
   process.on("SIGINT", () => {
     console.log("\n Stopping...");
     appium.kill();
-    if (lt) lt.close();
     process.exit(0);
   });
 })();
