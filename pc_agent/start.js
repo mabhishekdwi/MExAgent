@@ -108,14 +108,29 @@ function ensureAppium() {
 }
 
 function ensureUiautomator2() {
-  const list = tryRun("appium driver list --installed");
-  if (list && list.includes("uiautomator2")) {
+  // Capture both stdout and stderr since appium outputs to stderr
+  let list = "";
+  try {
+    const result = require("child_process").spawnSync("appium", ["driver", "list", "--installed"], {
+      encoding: "utf8", shell: process.platform === "win32"
+    });
+    list = (result.stdout || "") + (result.stderr || "");
+  } catch {}
+
+  if (list.includes("uiautomator2")) {
     console.log(" ✓ Driver  : uiautomator2 already installed");
     return;
   }
   console.log(" ⟳ Installing uiautomator2 driver...");
   try {
-    run("appium driver install uiautomator2", { stdio: "inherit" });
+    const result = require("child_process").spawnSync(
+      "appium", ["driver", "install", "uiautomator2"],
+      { encoding: "utf8", shell: process.platform === "win32" }
+    );
+    const out = (result.stdout || "") + (result.stderr || "");
+    if (result.status !== 0 && !out.includes("already installed")) {
+      throw new Error(out);
+    }
     console.log(" ✓ Driver  : uiautomator2 installed");
   } catch (e) {
     console.error(" ✗ Failed to install uiautomator2:", e.message);
