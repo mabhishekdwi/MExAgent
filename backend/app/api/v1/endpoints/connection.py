@@ -1,4 +1,3 @@
-import httpx
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -6,36 +5,18 @@ router = APIRouter()
 
 @router.get("/connection-check")
 async def connection_check():
-    """
-    Called by the Android app's Settings screen.
-    Returns status of the backend itself and the Appium server.
-    """
     from app.config.settings import settings
+    from app.api.v1.endpoints.appium_ws import proxy_manager
 
-    appium_ok = False
-    appium_version = None
-    appium_error = None
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                f"{settings.appium_url}/status",
-                headers={"Bypass-Tunnel-Reminder": "1"},
-            )
-            if r.status_code == 200:
-                data = r.json()
-                appium_ok = data.get("value", {}).get("ready", False)
-                appium_version = data.get("value", {}).get("build", {}).get("version")
-    except Exception as e:
-        appium_error = str(e)
+    appium_ok = proxy_manager.connected
 
     return {
         "backend": "ok",
         "appium": {
             "connected": appium_ok,
             "url": settings.appium_url,
-            "version": appium_version,
-            "error": appium_error,
+            "version": None,
+            "error": None if appium_ok else "PC agent not connected — run mexagent-pc.exe",
         },
         "device": {
             "udid": settings.device_udid,
