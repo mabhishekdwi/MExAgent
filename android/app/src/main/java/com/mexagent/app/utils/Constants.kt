@@ -7,7 +7,7 @@ object Constants {
     const val KEY_DEPTH = "depth"
     const val KEY_AI_MODE = "ai_mode"
 
-    const val DEFAULT_BACKEND_URL = "http://192.168.1.10:8000"
+    const val DEFAULT_BACKEND_URL = "https://mexagent.onrender.com"
     const val DEFAULT_DEPTH = 2
     const val DEFAULT_AI_MODE = true
 
