@@ -12,4 +12,8 @@ object Constants {
     const val DEFAULT_AI_MODE = true
 
     const val LOG_POLL_INTERVAL_MS = 2000L
+
+    // Connection check
+    const val KEY_APPIUM_URL = "appium_url"
+    const val DEFAULT_APPIUM_URL = "http://192.168.1.10:4723"
 }

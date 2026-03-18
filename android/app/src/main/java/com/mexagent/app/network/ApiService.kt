@@ -24,4 +24,7 @@ interface ApiService {
 
     @GET("/highlight")
     suspend fun getHighlight(): Response<HighlightResponse>
+
+    @GET("/connection-check")
+    suspend fun connectionCheck(): Response<ConnectionCheckResponse>
 }

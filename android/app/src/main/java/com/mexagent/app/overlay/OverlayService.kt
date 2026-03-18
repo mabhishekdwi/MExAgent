@@ -2,12 +2,14 @@ package com.mexagent.app.overlay
 
 import android.app.*
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.*
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.mexagent.app.MExAgentApp
@@ -33,6 +35,11 @@ class OverlayService : Service() {
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
     private lateinit var tvStatus: TextView
+    private lateinit var tvStatusDot: TextView
+    private lateinit var btnToggle: Button
+    private lateinit var llButtons: LinearLayout
+
+    private var isExpanded = false
 
     // Animation ticker at ~30fps
     private val animHandler = Handler(Looper.getMainLooper())
@@ -59,7 +66,6 @@ class OverlayService : Service() {
 
     private fun createHighlightOverlay() {
         highlightView = HighlightOverlayView(this)
-
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -69,19 +75,21 @@ class OverlayService : Service() {
                     or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
-
         windowManager.addView(highlightView, params)
     }
 
     // ── Control panel ─────────────────────────────────────────────────────────
 
     private fun createOverlayView() {
-        // ContextThemeWrapper required — Service has no UI theme, causing inflate crashes
         val themedCtx = android.view.ContextThemeWrapper(this, android.R.style.Theme_Material_Light)
         overlayView = LayoutInflater.from(themedCtx).inflate(R.layout.overlay_panel, null)
-        btnStart = overlayView.findViewById<Button>(R.id.btnOverlayStart)
-        btnStop  = overlayView.findViewById<Button>(R.id.btnOverlayStop)
-        tvStatus = overlayView.findViewById(R.id.tvOverlayStatus)
+
+        btnStart    = overlayView.findViewById(R.id.btnOverlayStart)
+        btnStop     = overlayView.findViewById(R.id.btnOverlayStop)
+        tvStatus    = overlayView.findViewById(R.id.tvOverlayStatus)
+        tvStatusDot = overlayView.findViewById(R.id.tvStatusDot)
+        btnToggle   = overlayView.findViewById(R.id.btnToggle)
+        llButtons   = overlayView.findViewById(R.id.llButtons)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -97,32 +105,56 @@ class OverlayService : Service() {
         makeDraggable(overlayView, params)
         windowManager.addView(overlayView, params)
 
+        // Toggle collapse/expand on header tap
+        overlayView.findViewById<LinearLayout>(R.id.llHeader).setOnClickListener {
+            togglePanel()
+        }
+        btnToggle.setOnClickListener { togglePanel() }
+
         btnStart.setOnClickListener { onStartClicked() }
         btnStop.setOnClickListener  { onStopClicked() }
-        overlayView.findViewById<Button>(R.id.btnOverlayLogs)?.setOnClickListener {
+
+        overlayView.findViewById<Button>(R.id.btnOverlayLogs).setOnClickListener {
             startActivity(Intent(this, LogActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
-        overlayView.findViewById<Button>(R.id.btnOverlaySettings)?.setOnClickListener {
+        overlayView.findViewById<Button>(R.id.btnOverlaySettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
+        overlayView.findViewById<Button>(R.id.btnOverlayQuit).setOnClickListener {
+            onQuitClicked()
+        }
+    }
+
+    private fun togglePanel() {
+        isExpanded = !isExpanded
+        llButtons.visibility = if (isExpanded) View.VISIBLE else View.GONE
+        btnToggle.text       = if (isExpanded) "▲" else "▼"
     }
 
     private fun makeDraggable(view: View, params: WindowManager.LayoutParams) {
         var initX = 0; var initY = 0
         var touchX = 0f; var touchY = 0f
+        var moved = false
 
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initX = params.x; initY = params.y
-                    touchX = event.rawX; touchY = event.rawY; false
+                    touchX = event.rawX; touchY = event.rawY
+                    moved = false; false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = initX + (event.rawX - touchX).toInt()
-                    params.y = initY + (event.rawY - touchY).toInt()
-                    windowManager.updateViewLayout(view, params); true
+                    val dx = (event.rawX - touchX).toInt()
+                    val dy = (event.rawY - touchY).toInt()
+                    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                        moved = true
+                        params.x = initX + dx
+                        params.y = initY + dy
+                        windowManager.updateViewLayout(view, params)
+                    }
+                    moved
                 }
                 else -> false
             }
@@ -143,7 +175,14 @@ class OverlayService : Service() {
         highlightView.update(null)
     }
 
-    // ── Highlight polling (300ms) ─────────────────────────────────────────────
+    private fun onQuitClicked() {
+        serviceScope.launch {
+            try { agentController.stop() } catch (_: Exception) {}
+        }
+        stopSelf()
+    }
+
+    // ── Highlight polling ─────────────────────────────────────────────────────
 
     private var highlightJob: Job? = null
 
@@ -161,13 +200,9 @@ class OverlayService : Service() {
                             if (h != null && h.active && h.width > 0 && h.height > 0) {
                                 highlightView.update(
                                     HighlightOverlayView.HighlightData(
-                                        x      = h.x,
-                                        y      = h.y,
-                                        width  = h.width,
-                                        height = h.height,
-                                        label  = h.label,
-                                        type   = h.type,
-                                        status = h.status
+                                        x = h.x, y = h.y,
+                                        width = h.width, height = h.height,
+                                        label = h.label, type = h.type, status = h.status
                                     )
                                 )
                             } else {
@@ -175,7 +210,7 @@ class OverlayService : Service() {
                             }
                         }
                     }
-                } catch (_: Exception) { }
+                } catch (_: Exception) {}
                 delay(300)
             }
         }
@@ -185,29 +220,23 @@ class OverlayService : Service() {
 
     private fun observeAgentState() = serviceScope.launch {
         agentController.state.collect { state ->
-            when (state) {
-                is AgentState.Idle -> {
-                    tvStatus.text = "Idle"
-                    btnStart.isEnabled = true; btnStop.isEnabled = false
-                    highlightJob?.cancel(); highlightView.update(null)
-                }
-                is AgentState.Starting -> {
-                    tvStatus.text = "Starting"
-                    btnStart.isEnabled = false; btnStop.isEnabled = false
-                }
-                is AgentState.Running -> {
-                    tvStatus.text = "Running"
-                    btnStart.isEnabled = false; btnStop.isEnabled = true
-                }
-                is AgentState.Stopping -> {
-                    tvStatus.text = "Stopping"
-                    btnStart.isEnabled = false; btnStop.isEnabled = false
-                }
-                is AgentState.Error -> {
-                    tvStatus.text = "Error"
-                    btnStart.isEnabled = true; btnStop.isEnabled = false
-                    highlightJob?.cancel(); highlightView.update(null)
-                }
+            val (label, dotColor, startOn, stopOn) = when (state) {
+                is AgentState.Idle     -> arrayOf("Idle",     "#4CAF50", true,  false)
+                is AgentState.Starting -> arrayOf("Starting", "#FF9800", false, false)
+                is AgentState.Running  -> arrayOf("Running",  "#2196F3", false, true)
+                is AgentState.Stopping -> arrayOf("Stopping", "#FF9800", false, false)
+                is AgentState.Error    -> arrayOf("Error",    "#F44336", true,  false)
+            }
+            tvStatus.text = label as String
+            tvStatusDot.setBackgroundColor(Color.parseColor(dotColor as String))
+            btnStart.isEnabled = startOn as Boolean
+            btnStop.isEnabled  = stopOn  as Boolean
+            btnStart.alpha = if (startOn) 1f else 0.4f
+            btnStop.alpha  = if (stopOn)  1f else 0.4f
+
+            if (state is AgentState.Idle || state is AgentState.Error) {
+                highlightJob?.cancel()
+                highlightView.update(null)
             }
         }
     }
@@ -215,7 +244,7 @@ class OverlayService : Service() {
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, MExAgentApp.OVERLAY_CHANNEL_ID)
             .setContentTitle("MExAgent Active")
-            .setContentText("Floating overlay is running")
+            .setContentText("Tap to open • Floating overlay running")
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setOngoing(true)
             .build()

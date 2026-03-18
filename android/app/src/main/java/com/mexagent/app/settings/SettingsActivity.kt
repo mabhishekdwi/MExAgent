@@ -1,11 +1,14 @@
 package com.mexagent.app.settings
 
+import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.mexagent.app.databinding.ActivitySettingsBinding
+import com.mexagent.app.network.ApiClient
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -21,12 +24,12 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         title = "Settings"
 
-        // Configure NumberPicker range
         binding.npDepth.minValue = 1
         binding.npDepth.maxValue = 10
 
         observeSettings()
         setupSaveButton()
+        setupConnectionTest()
     }
 
     private fun observeSettings() {
@@ -78,6 +81,83 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
             finish()
         }
+    }
+
+    private fun setupConnectionTest() {
+        binding.btnTestConnection.setOnClickListener {
+            val url = binding.etBackendUrl.text.toString().trim()
+            if (url.isEmpty()) {
+                Toast.makeText(this, "Enter backend URL first", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            binding.btnTestConnection.isEnabled = false
+            binding.btnTestConnection.text = "Testing..."
+            binding.llConnectionResult.visibility = View.VISIBLE
+
+            // Reset dots to grey
+            val grey = Color.parseColor("#9E9E9E")
+            binding.tvBackendDot.setBackgroundColor(grey)
+            binding.tvAppiumDot.setBackgroundColor(grey)
+            binding.tvDeviceDot.setBackgroundColor(grey)
+            binding.tvBackendStatus.text = "Backend: connecting..."
+            binding.tvAppiumStatus.text  = "Appium: waiting..."
+            binding.tvDeviceStatus.text  = "Device: waiting..."
+
+            lifecycleScope.launch {
+                try {
+                    val api  = ApiClient.getService(url)
+                    val resp = api.connectionCheck()
+
+                    if (resp.isSuccessful && resp.body() != null) {
+                        val result = resp.body()!!
+                        val green  = Color.parseColor("#4CAF50")
+                        val red    = Color.parseColor("#F44336")
+
+                        // Backend
+                        binding.tvBackendDot.setBackgroundColor(green)
+                        binding.tvBackendStatus.text = "Backend: ✓ Connected ($url)"
+
+                        // Appium
+                        val appium = result.appium
+                        if (appium.connected) {
+                            binding.tvAppiumDot.setBackgroundColor(green)
+                            binding.tvAppiumStatus.text =
+                                "Appium: ✓ v${appium.version ?: "?"} at ${appium.url}"
+                        } else {
+                            binding.tvAppiumDot.setBackgroundColor(red)
+                            binding.tvAppiumStatus.text =
+                                "Appium: ✗ Not reachable — ${appium.error ?: "check server"}"
+                        }
+
+                        // Device
+                        val device = result.device
+                        if (!device.udid.isNullOrEmpty()) {
+                            binding.tvDeviceDot.setBackgroundColor(green)
+                            binding.tvDeviceStatus.text =
+                                "Device: ✓ ${device.name} (Android ${device.platformVersion})"
+                        } else {
+                            binding.tvDeviceDot.setBackgroundColor(Color.parseColor("#FF9800"))
+                            binding.tvDeviceStatus.text = "Device: no UDID configured in .env"
+                        }
+                    } else {
+                        showBackendError("HTTP ${resp.code()}")
+                    }
+                } catch (e: Exception) {
+                    showBackendError(e.message ?: "timeout")
+                }
+
+                binding.btnTestConnection.isEnabled = true
+                binding.btnTestConnection.text = "Test Connection"
+            }
+        }
+    }
+
+    private fun showBackendError(msg: String) {
+        val red = Color.parseColor("#F44336")
+        binding.tvBackendDot.setBackgroundColor(red)
+        binding.tvBackendStatus.text  = "Backend: ✗ $msg"
+        binding.tvAppiumStatus.text   = "Appium: — (backend unreachable)"
+        binding.tvDeviceStatus.text   = "Device: — (backend unreachable)"
     }
 
     override fun onSupportNavigateUp(): Boolean {

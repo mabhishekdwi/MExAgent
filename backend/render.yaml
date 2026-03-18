@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: mexagent-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: LLM_PROVIDER
+        value: groq
+      - key: ACTION_DELAY_MS
+        value: "2500"
+      - key: DEFAULT_DEPTH
+        value: "2"
+      - key: APPIUM_URL
+        value: "http://not-configured-yet"
+      - key: GROQ_API_KEY
+        sync: false        # fill this in Render dashboard
+      - key: CONFIGURE_SECRET
+        sync: false        # optional: set a shared secret in Render dashboard

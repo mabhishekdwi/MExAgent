@@ -34,6 +34,25 @@ data class LogMessage(
     @SerializedName("screen") val screen: String?
 )
 
+data class AppiumInfo(
+    @SerializedName("connected") val connected: Boolean,
+    @SerializedName("url") val url: String?,
+    @SerializedName("version") val version: String?,
+    @SerializedName("error") val error: String?
+)
+
+data class DeviceInfo(
+    @SerializedName("udid") val udid: String?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("platform_version") val platformVersion: String?
+)
+
+data class ConnectionCheckResponse(
+    @SerializedName("backend") val backend: String,
+    @SerializedName("appium") val appium: AppiumInfo,
+    @SerializedName("device") val device: DeviceInfo
+)
+
 data class HighlightResponse(
     @SerializedName("active") val active: Boolean,
     @SerializedName("x") val x: Int,

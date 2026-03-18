@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, env="PORT")
     debug: bool = Field(default=False, env="DEBUG")
 
+    # Security
+    configure_secret: Optional[str] = Field(default=None, env="CONFIGURE_SECRET")
+
     class Config:
         env_file = ".env"
         extra = "ignore"

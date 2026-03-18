@@ -1,0 +1,8 @@
+{
+  "name": "mexagent-pc-agent",
+  "version": "1.0.0",
+  "description": "Starts Appium + ngrok and registers with MExAgent cloud backend",
+  "scripts": {
+    "start": "node start.js"
+  }
+}

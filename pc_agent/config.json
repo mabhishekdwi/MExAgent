@@ -1,0 +1,5 @@
+{
+  "backendUrl": "https://your-app.onrender.com",
+  "configureSecret": "",
+  "appiumPort": 4723
+}
