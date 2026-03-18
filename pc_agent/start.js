@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 /**
- * MExAgent PC Agent
- * Single command: npm start
- * Starts Appium + localtunnel (no account needed), registers with cloud backend.
+ * MExAgent PC Agent — single command setup
+ * npm start
+ *
+ * Automatically:
+ *   - Installs Appium if missing
+ *   - Installs uiautomator2 driver if missing
+ *   - Detects connected Android device via ADB
+ *   - Starts Appium server
+ *   - Creates public tunnel via localtunnel
+ *   - Registers tunnel URL + device info with cloud backend
  */
 
-const { execSync, spawn } = require("child_process");
+const { execSync, spawnSync, spawn } = require("child_process");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
@@ -25,8 +32,12 @@ if (!backendUrl || backendUrl.includes("your-app")) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function run(cmd) {
-  return execSync(cmd, { encoding: "utf8" }).trim();
+function run(cmd, opts = {}) {
+  return execSync(cmd, { encoding: "utf8", ...opts }).trim();
+}
+
+function tryRun(cmd) {
+  try { return run(cmd); } catch { return null; }
 }
 
 function spawnBackground(cmd, args, label) {
@@ -38,7 +49,8 @@ function spawnBackground(cmd, args, label) {
   proc.stdout.on("data", (d) => process.stdout.write(`[${label}] ${d}`));
   proc.stderr.on("data", (d) => process.stderr.write(`[${label}] ${d}`));
   proc.on("exit", (code) => {
-    if (code !== 0 && code !== null) console.log(`[${label}] exited with code ${code}`);
+    if (code !== 0 && code !== null)
+      console.log(`[${label}] exited with code ${code}`);
   });
   return proc;
 }
@@ -74,11 +86,49 @@ function httpPost(url, body) {
   });
 }
 
+// ── Auto-install Appium if missing ────────────────────────────────────────────
+function ensureAppium() {
+  const version = tryRun("appium --version");
+  if (version) {
+    console.log(` ✓ Appium  : already installed (v${version})`);
+    return;
+  }
+  console.log(" ⟳ Appium not found — installing globally (npm install -g appium)...");
+  try {
+    run("npm install -g appium", { stdio: "inherit" });
+    console.log(" ✓ Appium  : installed");
+  } catch (e) {
+    console.error(" ✗ Failed to install Appium:", e.message);
+    console.error("   Try manually: npm install -g appium");
+    process.exit(1);
+  }
+}
+
+function ensureUiautomator2() {
+  const list = tryRun("appium driver list --installed");
+  if (list && list.includes("uiautomator2")) {
+    console.log(" ✓ Driver  : uiautomator2 already installed");
+    return;
+  }
+  console.log(" ⟳ Installing uiautomator2 driver...");
+  try {
+    run("appium driver install uiautomator2", { stdio: "inherit" });
+    console.log(" ✓ Driver  : uiautomator2 installed");
+  } catch (e) {
+    console.error(" ✗ Failed to install uiautomator2:", e.message);
+    process.exit(1);
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 (async () => {
   console.log("\n MExAgent PC Agent\n ==================\n");
 
-  // 1. Detect device
+  // 1. Ensure Appium + driver installed
+  ensureAppium();
+  ensureUiautomator2();
+
+  // 2. Detect device
   let deviceUdid = "", deviceName = "", platformVersion = "";
   try {
     const devices = run("adb devices");
@@ -87,14 +137,14 @@ function httpPost(url, body) {
     deviceUdid = match.split("\t")[0].trim();
     deviceName = run("adb shell getprop ro.product.model").replace(/\r/g, "");
     platformVersion = run("adb shell getprop ro.build.version.release").replace(/\r/g, "");
-    console.log(` ✓ Device : ${deviceName} | Android ${platformVersion} | ${deviceUdid}`);
+    console.log(` ✓ Device  : ${deviceName} | Android ${platformVersion} | ${deviceUdid}`);
   } catch {
     console.error(" ✗ No Android device found via ADB.");
     console.error("   Connect phone via USB and enable USB Debugging.");
     process.exit(1);
   }
 
-  // 2. Start Appium
+  // 3. Start Appium
   console.log(` ⟳ Starting Appium on port ${appiumPort}...`);
   const appium = spawnBackground(
     "appium",
@@ -104,7 +154,7 @@ function httpPost(url, body) {
   await sleep(3000);
   console.log(` ✓ Appium  : running on port ${appiumPort}`);
 
-  // 3. Start localtunnel (no account needed)
+  // 4. Start localtunnel
   console.log(` ⟳ Starting tunnel...`);
   let lt;
   let tunnelUrl = "";
@@ -121,8 +171,8 @@ function httpPost(url, body) {
   }
   console.log(` ✓ Tunnel  : ${tunnelUrl}`);
 
-  // 4. Register with cloud backend
-  console.log(` ⟳ Registering with backend: ${backendUrl}`);
+  // 5. Register with cloud backend
+  console.log(` ⟳ Registering with backend...`);
   try {
     const result = await httpPost(`${backendUrl}/configure`, {
       appium_url: tunnelUrl,
@@ -133,7 +183,7 @@ function httpPost(url, body) {
     });
     const parsed = JSON.parse(result);
     if (parsed.status === "ok") {
-      console.log(` ✓ Backend : registered successfully`);
+      console.log(` ✓ Backend : registered — device "${deviceName}" ready`);
     } else {
       console.log(` ? Backend : ${result}`);
     }
@@ -141,8 +191,8 @@ function httpPost(url, body) {
     console.error(` ✗ Could not reach backend: ${e.message}`);
   }
 
-  // 5. Done
-  const pad = (s, n) => String(s).padEnd(n);
+  // 6. Done
+  const pad = (s, n) => String(s).slice(0, n).padEnd(n);
   console.log(`
  ╔══════════════════════════════════════════════╗
  ║  All systems running!                        ║
@@ -157,7 +207,6 @@ function httpPost(url, body) {
   Press Ctrl+C to stop everything.
 `);
 
-  // Keep alive — kill children on exit
   process.on("SIGINT", () => {
     console.log("\n Stopping...");
     appium.kill();
