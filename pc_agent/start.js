@@ -138,18 +138,50 @@ function ensureUiautomator2() {
   }
 }
 
-// ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
-function startCloudflareTunnel(port) {
+// ── Cloudflare Tunnel (auto-download cloudflared if missing) ──────────────────
+const http = require("http");
+
+function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("cloudflared", ["tunnel", "--url", `http://localhost:${port}`], {
+    const follow = (u) => {
+      const mod = u.startsWith("https") ? https : http;
+      mod.get(u, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          follow(res.headers.location);
+          return;
+        }
+        const file = fs.createWriteStream(dest);
+        res.pipe(file);
+        file.on("finish", () => file.close(resolve));
+        file.on("error", reject);
+      }).on("error", reject);
+    };
+    follow(url);
+  });
+}
+
+async function ensureCloudflared() {
+  const exeDir = process.pkg ? path.dirname(process.execPath) : __dirname;
+  const cfPath = path.join(exeDir, "cloudflared.exe");
+  if (fs.existsSync(cfPath)) return cfPath;
+
+  console.log(" ⟳ Downloading cloudflared (one-time, ~35MB)...");
+  const url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
+  await downloadFile(url, cfPath);
+  console.log(" ✓ cloudflared downloaded");
+  return cfPath;
+}
+
+function startCloudflareTunnel(port, cfPath) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cfPath, ["tunnel", "--url", `http://localhost:${port}`], {
       stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
     });
 
     let resolved = false;
     const timeout = setTimeout(() => {
       if (!resolved) reject(new Error("Timeout waiting for tunnel URL"));
-    }, 20000);
+    }, 30000);
 
     const onData = (data) => {
       const text = data.toString();
@@ -157,7 +189,7 @@ function startCloudflareTunnel(port) {
       if (match && !resolved) {
         resolved = true;
         clearTimeout(timeout);
-        resolve(match[0]);
+        resolve({ url: match[0], proc });
       }
     };
 
@@ -166,9 +198,6 @@ function startCloudflareTunnel(port) {
     proc.on("exit", (code) => {
       if (!resolved) reject(new Error(`cloudflared exited with code ${code}`));
     });
-
-    // Keep reference for cleanup
-    process.on("SIGINT", () => { proc.kill(); });
   });
 }
 
@@ -206,11 +235,15 @@ function startCloudflareTunnel(port) {
   await sleep(3000);
   console.log(` ✓ Appium  : running on port ${appiumPort}`);
 
-  // 4. Start Cloudflare tunnel (uses port 443, no firewall issues, no account needed)
+  // 4. Start Cloudflare tunnel (auto-downloads cloudflared, uses port 443)
   console.log(` ⟳ Starting tunnel...`);
   let tunnelUrl = "";
+  let cfProc;
   try {
-    tunnelUrl = await startCloudflareTunnel(appiumPort);
+    const cfPath = await ensureCloudflared();
+    const tunnel = await startCloudflareTunnel(appiumPort, cfPath);
+    tunnelUrl = tunnel.url;
+    cfProc = tunnel.proc;
     console.log(` ✓ Tunnel  : ${tunnelUrl}`);
   } catch (e) {
     console.error(" ✗ Could not start tunnel:", e.message);
@@ -257,6 +290,7 @@ function startCloudflareTunnel(port) {
   process.on("SIGINT", () => {
     console.log("\n Stopping...");
     appium.kill();
+    if (cfProc) cfProc.kill();
     process.exit(0);
   });
 })();
