@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Query
+from fastapi.responses import PlainTextResponse
 from typing import Optional
 from app.schemas.log import LogsResponse
 from app.utils.logger import get_logs, clear_logs
@@ -14,6 +15,13 @@ async def fetch_logs(
 ):
     logs = await get_logs(since_id=since_id, limit=limit, session_id=session_id)
     return LogsResponse(logs=logs, total=len(logs), session_id=session_id)
+
+
+@router.get("/logs/export", response_class=PlainTextResponse)
+async def export_logs(session_id: Optional[str] = Query(default=None)):
+    logs = await get_logs(limit=1000, session_id=session_id)
+    lines = [f"[{e.timestamp}] [{e.level}] {e.message}" for e in logs]
+    return "\n".join(lines)
 
 
 @router.delete("/logs", status_code=204)

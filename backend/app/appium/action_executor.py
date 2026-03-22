@@ -118,6 +118,19 @@ async def execute_action(
         # ── TAP ──────────────────────────────────────────────────────────────
         if act == "tap":
             def _tap():
+                # Prefer tapping by coordinates from XML bounds (fast, reliable)
+                target = (action.target or "").strip()
+                target_elem = next(
+                    (e for e in screen_ctx.elements
+                     if e.label == target or str(e.index) == target),
+                    None
+                )
+                if target_elem and target_elem.bounds:
+                    coords = _bounds_center(target_elem.bounds)
+                    if coords:
+                        driver.tap([coords])
+                        return f"Tapped '{action.target}' at {coords}"
+                # Fallback: find_element
                 el = _resolve_element(driver, action, screen_ctx)
                 if el:
                     el.click()
