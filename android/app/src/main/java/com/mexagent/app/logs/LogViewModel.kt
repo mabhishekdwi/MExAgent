@@ -16,34 +16,61 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
 
-    private val _isPolling = MutableStateFlow(false)
-    val isPolling: StateFlow<Boolean> = _isPolling.asStateFlow()
-
-    private val _error = MutableSharedFlow<String>()
-    val error: SharedFlow<String> = _error.asSharedFlow()
+    private val _scrollToBottom = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val scrollToBottom: SharedFlow<Unit> = _scrollToBottom.asSharedFlow()
 
     private var pollJob: Job? = null
     private var lastSeenId: Long = 0
+    private var currentSessionId: String? = null
 
     fun startPolling() {
         if (pollJob?.isActive == true) return
-        _isPolling.value = true
+        _logs.value = emptyList()
+        lastSeenId = 0
         pollJob = viewModelScope.launch {
             val url = dataStore.backendUrl.first()
             val service = ApiClient.getService(url)
+
+            // Get current session ID from status
+            try {
+                val statusResp = service.getStatus()
+                if (statusResp.isSuccessful) {
+                    currentSessionId = statusResp.body()?.sessionId
+                }
+            } catch (_: Exception) {}
+
+            // Load existing logs for the current session
+            try {
+                val resp = service.getLogs(sinceId = null)
+                if (resp.isSuccessful) {
+                    val all = resp.body()?.logs ?: emptyList()
+                    val sessionLogs = if (currentSessionId != null)
+                        all.filter { it.sessionId == currentSessionId }
+                    else all.takeLast(50)
+                    if (sessionLogs.isNotEmpty()) {
+                        _logs.value = sessionLogs.map { LogEntry.fromNetwork(it) }
+                        lastSeenId = sessionLogs.maxOf { it.id }
+                        _scrollToBottom.tryEmit(Unit)
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // Poll for new logs
             while (isActive) {
                 try {
                     val resp = service.getLogs(sinceId = lastSeenId.takeIf { it > 0 })
                     if (resp.isSuccessful) {
-                        val newEntries = resp.body()?.logs?.map { LogEntry.fromNetwork(it) } ?: emptyList()
+                        val newEntries = resp.body()?.logs
+                            ?.filter { currentSessionId == null || it.sessionId == currentSessionId }
+                            ?.map { LogEntry.fromNetwork(it) }
+                            ?: emptyList()
                         if (newEntries.isNotEmpty()) {
                             lastSeenId = newEntries.maxOf { it.id }
                             _logs.value = _logs.value + newEntries
+                            _scrollToBottom.tryEmit(Unit)
                         }
                     }
-                } catch (e: Exception) {
-                    _error.emit("Poll error: ${e.message}")
-                }
+                } catch (_: Exception) {}
                 delay(Constants.LOG_POLL_INTERVAL_MS)
             }
         }
@@ -51,12 +78,10 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stopPolling() {
         pollJob?.cancel()
-        _isPolling.value = false
     }
 
     fun clearLogs() {
         _logs.value = emptyList()
-        lastSeenId = 0
     }
 
     override fun onCleared() {

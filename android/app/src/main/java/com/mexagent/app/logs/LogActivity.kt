@@ -1,8 +1,12 @@
 package com.mexagent.app.logs
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -35,9 +39,13 @@ class LogActivity : AppCompatActivity() {
         lifecycleScope.launch {
             viewModel.logs.collectLatest { entries ->
                 adapter.submitList(entries.toList())
-                if (entries.isNotEmpty()) {
-                    binding.rvLogs.smoothScrollToPosition(entries.size - 1)
-                }
+            }
+        }
+
+        lifecycleScope.launch {
+            viewModel.scrollToBottom.collect {
+                val count = adapter.itemCount
+                if (count > 0) binding.rvLogs.scrollToPosition(count - 1)
             }
         }
 
@@ -51,7 +59,23 @@ class LogActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_clear -> { viewModel.clearLogs(); true }
+            R.id.action_copy -> {
+                val logs = viewModel.logs.value
+                if (logs.isEmpty()) {
+                    Toast.makeText(this, "No logs to copy", Toast.LENGTH_SHORT).show()
+                } else {
+                    val text = logs.joinToString("\n") { "[${it.level}] ${it.timestamp} ${it.message}" }
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("MExAgent Logs", text))
+                    Toast.makeText(this, "Logs copied to clipboard", Toast.LENGTH_SHORT).show()
+                }
+                true
+            }
+            R.id.action_clear -> {
+                viewModel.clearLogs()
+                adapter.submitList(emptyList())
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }

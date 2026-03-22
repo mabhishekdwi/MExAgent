@@ -31,7 +31,8 @@ data class LogMessage(
     @SerializedName("level") val level: String,
     @SerializedName("message") val message: String,
     @SerializedName("timestamp") val timestamp: String,
-    @SerializedName("screen") val screen: String?
+    @SerializedName("screen") val screen: String?,
+    @SerializedName("session_id") val sessionId: String?
 )
 
 data class AppiumInfo(

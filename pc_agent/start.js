@@ -13,6 +13,7 @@ const http  = require("http");
 const https = require("https");
 const fs    = require("fs");
 const path  = require("path");
+const WebSocket = require("ws");
 
 // ── Load config ───────────────────────────────────────────────────────────────
 const exeDir = process.pkg ? path.dirname(process.execPath) : __dirname;
@@ -38,11 +39,12 @@ function tryRun(cmd) {
   try { return run(cmd); } catch { return null; }
 }
 
-function spawnBackground(cmd, args, label) {
+function spawnBackground(cmd, args, label, extraEnv = {}) {
   const proc = spawn(cmd, args, {
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
     detached: false,
+    env: { ...process.env, ...extraEnv },
   });
   proc.stdout.on("data", (d) => process.stdout.write(`[${label}] ${d}`));
   proc.stderr.on("data", (d) => process.stderr.write(`[${label}] ${d}`));
@@ -134,7 +136,7 @@ function ensureUiautomator2() {
 function forwardToAppium(method, reqPath, body, port) {
   return new Promise((resolve) => {
     const options = {
-      hostname: "localhost",
+      hostname: "127.0.0.1",
       port,
       path: reqPath,
       method,
@@ -151,90 +153,70 @@ function forwardToAppium(method, reqPath, body, port) {
   });
 }
 
-// ── WebSocket proxy to backend ────────────────────────────────────────────────
-function connectProxy(wsUrl, appiumPort) {
-  return new Promise((resolve, reject) => {
-    const url    = new URL(wsUrl);
-    const isSSL  = url.protocol === "wss:";
-    const mod    = isSSL ? https : http;
-    const port   = url.port || (isSSL ? 443 : 80);
-    const key    = require("crypto").randomBytes(16).toString("base64");
+// ── WebSocket proxy to backend (using ws library — handles masking/framing correctly) ──
+async function connectProxy(wsUrl, appiumPort) {
+  return new Promise((resolve) => {
+    let resolved = false;
 
-    const req = mod.request({
-      hostname: url.hostname,
-      port,
-      path: url.pathname,
-      method: "GET",
-      headers: {
-        "Host":                   url.host,
-        "Upgrade":                "websocket",
-        "Connection":             "Upgrade",
-        "Sec-WebSocket-Key":      key,
-        "Sec-WebSocket-Version":  "13",
-      },
-    });
+    const tryConnect = () => {
+      const ws = new WebSocket(wsUrl, {
+        handshakeTimeout: 10000,
+        perMessageDeflate: false,
+      });
 
-    req.on("upgrade", (_res, socket) => {
-      console.log(" ✓ Proxy   : connected to backend");
-      resolve(socket);
+      // Keepalive ping every 20s so Render doesn't drop idle connections
+      const pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.ping();
+      }, 20000);
 
-      // Parse incoming WebSocket frames and forward to Appium
-      let buf = Buffer.alloc(0);
-      socket.on("data", async (chunk) => {
-        buf = Buffer.concat([buf, chunk]);
-        while (buf.length >= 2) {
-          const b0 = buf[0], b1 = buf[1];
-          const masked = !!(b1 & 0x80);
-          let payloadLen = b1 & 0x7f;
-          let offset = 2;
-          if (payloadLen === 126) { if (buf.length < 4) break; payloadLen = buf.readUInt16BE(2); offset = 4; }
-          else if (payloadLen === 127) { if (buf.length < 10) break; payloadLen = Number(buf.readBigUInt64BE(2)); offset = 10; }
-          const maskOffset = offset;
-          if (masked) offset += 4;
-          if (buf.length < offset + payloadLen) break;
-          let payload = buf.subarray(offset, offset + payloadLen);
-          if (masked) {
-            const mask = buf.subarray(maskOffset, maskOffset + 4);
-            payload = Buffer.from(payload.map((b, i) => b ^ mask[i % 4]));
-          }
-          buf = buf.subarray(offset + payloadLen);
-          const opcode = b0 & 0x0f;
-          if (opcode === 0x8) { socket.destroy(); return; } // close
-          if (opcode === 0x9) { sendWsFrame(socket, Buffer.from([0x8a, 0x00])); continue; } // pong
-          if (opcode === 0x1 || opcode === 0x2) {
-            try {
-              const msg   = JSON.parse(payload.toString());
-              const appResp = await forwardToAppium(msg.method, msg.path, msg.body, appiumPort);
-              const frame  = JSON.stringify({ id: msg.id, status: appResp.status, body: appResp.body });
-              sendWsText(socket, frame);
-            } catch (e) {
-              console.error("[proxy] error:", e.message);
-            }
-          }
+      ws.on("open", () => {
+        if (!resolved) {
+          resolved = true;
+          console.log(" ✓ Proxy   : connected to backend");
+          resolve();
+        } else {
+          console.log("[proxy] reconnected to backend");
         }
       });
 
-      socket.on("close",  () => console.log("[proxy] disconnected — restart exe to reconnect"));
-      socket.on("error",  (e) => console.error("[proxy] socket error:", e.message));
-    });
+      ws.on("message", async (data) => {
+        try {
+          const msg     = JSON.parse(data.toString());
+          const appResp = await forwardToAppium(msg.method, msg.path, msg.body, appiumPort);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ id: msg.id, status: appResp.status, body: appResp.body }));
+          }
+        } catch (e) {
+          console.error("[proxy] error:", e.message);
+        }
+      });
 
-    req.on("error", (e) => reject(e));
-    req.end();
+      ws.on("close", () => {
+        clearInterval(pingInterval);
+        console.log("[proxy] connection dropped — reconnecting in 5s...");
+        setTimeout(tryConnect, 5000);
+      });
+
+      ws.on("error", (e) => {
+        clearInterval(pingInterval);
+        if (!resolved) {
+          resolved = true;
+          console.error(" ✗ Proxy connection failed:", e.message);
+          resolve();
+        }
+      });
+    };
+
+    tryConnect();
+
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        console.error(" ✗ Proxy connection timed out");
+        resolve();
+      }
+    }, 15000);
   });
-}
-
-function sendWsText(socket, text) {
-  const payload = Buffer.from(text);
-  const len     = payload.length;
-  let header;
-  if (len < 126)       header = Buffer.from([0x81, len]);
-  else if (len < 65536) header = Buffer.from([0x81, 126, len >> 8, len & 0xff]);
-  else                  header = Buffer.from([0x81, 127, 0,0,0,0, len>>24,(len>>16)&0xff,(len>>8)&0xff,len&0xff]);
-  socket.write(Buffer.concat([header, payload]));
-}
-
-function sendWsFrame(socket, frame) {
-  socket.write(frame);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -263,10 +245,22 @@ function sendWsFrame(socket, frame) {
 
   // 3. Start Appium
   console.log(` ⟳ Starting Appium on port ${appiumPort}...`);
+
+  // Detect Android SDK location
+  const possibleSdkPaths = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(process.env.LOCALAPPDATA || "", "Android", "Sdk"),
+    path.join(process.env.USERPROFILE || "", "AppData", "Local", "Android", "Sdk"),
+  ].filter(Boolean);
+  const androidHome = possibleSdkPaths.find((p) => fs.existsSync(p)) || "";
+  if (androidHome) console.log(` ✓ Android SDK: ${androidHome}`);
+
   const appium = spawnBackground(
     "appium",
     ["server", "--base-path", "/", "--relaxed-security", "--port", String(appiumPort)],
-    "Appium"
+    "Appium",
+    androidHome ? { ANDROID_HOME: androidHome, ANDROID_SDK_ROOT: androidHome } : {}
   );
   await sleep(3000);
   console.log(` ✓ Appium  : running on port ${appiumPort}`);
@@ -314,6 +308,36 @@ function sendWsFrame(socket, frame) {
   Open MExAgent on your phone and press ▶ Start
   Press Ctrl+C to stop everything.
 `);
+
+  // 7. Save logs to local file
+  const logFile = path.join(exeDir, "mexagent-logs.txt");
+  let lastLogId = 0;
+  fs.writeFileSync(logFile, `MExAgent Log — started ${new Date().toLocaleString()}\n${"=".repeat(60)}\n`);
+  console.log(` ✓ Logs    : saving to ${logFile}`);
+
+  setInterval(async () => {
+    try {
+      const url = `${backendUrl}/logs${lastLogId > 0 ? `?since_id=${lastLogId}` : ""}`;
+      const parsed = new URL(url);
+      const mod = parsed.protocol === "https:" ? https : http;
+      mod.get({ hostname: parsed.hostname, port: parsed.port || 443, path: parsed.pathname + parsed.search,
+        headers: { "Accept": "application/json" } }, (res) => {
+        let data = "";
+        res.on("data", (c) => data += c);
+        res.on("end", () => {
+          try {
+            const body = JSON.parse(data);
+            const entries = body.logs || [];
+            if (entries.length > 0) {
+              const lines = entries.map(e => `[${e.timestamp}] [${e.level}] ${e.message}`).join("\n");
+              fs.appendFileSync(logFile, lines + "\n");
+              lastLogId = Math.max(...entries.map(e => e.id));
+            }
+          } catch {}
+        });
+      }).on("error", () => {});
+    } catch {}
+  }, 3000);
 
   process.on("SIGINT", () => {
     console.log("\n Stopping...");
