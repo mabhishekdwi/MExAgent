@@ -312,31 +312,47 @@ async function connectProxy(wsUrl, appiumPort) {
   // 7. Save logs to local file
   const logFile = path.join(exeDir, "mexagent-logs.txt");
   let lastLogId = 0;
+  let polling = false;
   fs.writeFileSync(logFile, `MExAgent Log — started ${new Date().toLocaleString()}\n${"=".repeat(60)}\n`);
   console.log(` ✓ Logs    : saving to ${logFile}`);
 
-  setInterval(async () => {
+  function utcTimeToLocal(ts) {
     try {
-      const url = `${backendUrl}/logs${lastLogId > 0 ? `?since_id=${lastLogId}` : ""}`;
-      const parsed = new URL(url);
-      const mod = parsed.protocol === "https:" ? https : http;
-      mod.get({ hostname: parsed.hostname, port: parsed.port || 443, path: parsed.pathname + parsed.search,
-        headers: { "Accept": "application/json" } }, (res) => {
-        let data = "";
-        res.on("data", (c) => data += c);
-        res.on("end", () => {
-          try {
-            const body = JSON.parse(data);
-            const entries = body.logs || [];
-            if (entries.length > 0) {
-              const lines = entries.map(e => `[${e.timestamp}] [${e.level}] ${e.message}`).join("\n");
-              fs.appendFileSync(logFile, lines + "\n");
-              lastLogId = Math.max(...entries.map(e => e.id));
-            }
-          } catch {}
-        });
-      }).on("error", () => {});
-    } catch {}
+      const [h, m, s] = ts.split(":");
+      const [sec, ms] = s.split(".");
+      const d = new Date();
+      d.setUTCHours(parseInt(h), parseInt(m), parseInt(sec), parseInt(ms || 0));
+      return d.toTimeString().split(" ")[0] + "." + String(d.getMilliseconds()).padStart(3, "0");
+    } catch { return ts; }
+  }
+
+  setInterval(() => {
+    if (polling) return; // skip if previous poll still running
+    polling = true;
+    const url = `${backendUrl}/logs${lastLogId > 0 ? `?since_id=${lastLogId}` : ""}`;
+    const parsed = new URL(url);
+    const mod = parsed.protocol === "https:" ? https : http;
+    mod.get({
+      hostname: parsed.hostname, port: parsed.port || 443,
+      path: parsed.pathname + parsed.search, headers: { "Accept": "application/json" }
+    }, (res) => {
+      let data = "";
+      res.on("data", (c) => data += c);
+      res.on("end", () => {
+        try {
+          const entries = JSON.parse(data).logs || [];
+          const newEntries = entries.filter(e => e.id > lastLogId);
+          if (newEntries.length > 0) {
+            const lines = newEntries.map(e =>
+              `[${utcTimeToLocal(e.timestamp)}] [${e.level}] ${e.message}`
+            ).join("\n");
+            fs.appendFileSync(logFile, lines + "\n");
+            lastLogId = Math.max(...newEntries.map(e => e.id));
+          }
+        } catch {}
+        polling = false;
+      });
+    }).on("error", () => { polling = false; });
   }, 3000);
 
   process.on("SIGINT", () => {

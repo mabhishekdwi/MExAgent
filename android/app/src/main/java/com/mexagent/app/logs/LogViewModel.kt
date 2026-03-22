@@ -64,9 +64,11 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
                             ?.filter { currentSessionId == null || it.sessionId == currentSessionId }
                             ?.map { LogEntry.fromNetwork(it) }
                             ?: emptyList()
-                        if (newEntries.isNotEmpty()) {
-                            lastSeenId = newEntries.maxOf { it.id }
-                            _logs.value = _logs.value + newEntries
+                        val existingIds = _logs.value.map { it.id }.toSet()
+                        val dedupedEntries = newEntries.filter { it.id !in existingIds }
+                        if (dedupedEntries.isNotEmpty()) {
+                            lastSeenId = dedupedEntries.maxOf { it.id }
+                            _logs.value = _logs.value + dedupedEntries
                             _scrollToBottom.tryEmit(Unit)
                         }
                     }
